@@ -14,6 +14,8 @@
 
 namespace ROCKSDB_NAMESPACE {
 
+extern std::shared_ptr<Logger> _logger;
+
 WriteThread::WriteThread(const ImmutableDBOptions& db_options)
     : max_yield_usec_(db_options.enable_write_thread_adaptive_yield
                           ? db_options.write_thread_max_yield_usec
@@ -378,6 +380,11 @@ void WriteThread::EndWriteStall() {
 }
 
 static WriteThread::AdaptationContext jbg_ctx("JoinBatchGroup");
+thread_local uint64_t __beta = 0;
+thread_local uint64_t __beta_cnt = 0;  
+thread_local uint64_t __delta = 0;
+thread_local uint64_t __delta_cnt = 0;
+
 void WriteThread::JoinBatchGroup(Writer* w) {
   TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:Start", w);
   assert(w->batch != nullptr);
@@ -405,9 +412,25 @@ void WriteThread::JoinBatchGroup(Writer* w) {
      *      writes in parallel.
      */
     TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:BeganWaiting", w);
+    auto start = std::chrono::system_clock::now();
+    ROCKS_LOG_INFO(_logger, "Thread(%ld) %llu AwaitState Start", std::this_thread::get_id(), start);
+
     AwaitState(w, STATE_GROUP_LEADER | STATE_MEMTABLE_WRITER_LEADER |
                       STATE_PARALLEL_MEMTABLE_WRITER | STATE_COMPLETED,
                &jbg_ctx);
+    if (w->state == WriteThread::STATE_GROUP_LEADER) { 
+      auto sec = std::chrono::system_clock::now() - start;
+      ROCKS_LOG_INFO(_logger, "Thread(%ld) %llu AwaitState End, GROUP_LEADER | Latency(sec) %f", std::this_thread::get_id(), start, sec.count()*1e-9);
+      __beta += sec.count();
+      __beta_cnt++;
+    }
+    else if (w->state == WriteThread::STATE_MEMTABLE_WRITER_LEADER ||
+             w->state == WriteThread::STATE_PARALLEL_MEMTABLE_WRITER) { 
+      auto sec = std::chrono::system_clock::now() - start;
+      ROCKS_LOG_INFO(_logger, "Thread(%ld) %llu AwaitState End, MEMTABLE_WRITER | Latency(sec) %f", std::this_thread::get_id(), start, sec.count()*1e-9);
+      __delta += sec.count();
+      __delta_cnt++;
+    }
     TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:DoneWaiting", w);
   }
 }

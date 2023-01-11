@@ -1054,6 +1054,9 @@ WriteBatch* DBImpl::MergeBatch(const WriteThread::WriteGroup& write_group,
 
 // When two_write_queues_ is disabled, this function is called from the only
 // write thread. Otherwise this must be called holding log_write_mutex_.
+
+thread_local uint64_t __alpha;
+thread_local uint64_t __alpha_cnt;
 IOStatus DBImpl::WriteToWAL(const WriteBatch& merged_batch,
                             log::Writer* log_writer, uint64_t* log_used,
                             uint64_t* log_size) {
@@ -1071,7 +1074,12 @@ IOStatus DBImpl::WriteToWAL(const WriteBatch& merged_batch,
   if (UNLIKELY(needs_locking)) {
     log_write_mutex_.Lock();
   }
+
+  auto start = std::chrono::system_clock::now();
   IOStatus io_s = log_writer->AddRecord(log_entry);
+  auto sec = std::chrono::system_clock::now() - start;
+  __alpha += sec.count();
+  __alpha_cnt++;
 
   if (UNLIKELY(needs_locking)) {
     log_write_mutex_.Unlock();

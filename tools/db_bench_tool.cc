@@ -1513,6 +1513,15 @@ static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((__unused__
                           &ValidateTableCacheNumshardbits);
 
 namespace ROCKSDB_NAMESPACE {
+  extern thread_local uint64_t __alpha;
+  extern thread_local uint64_t __alpha_cnt;
+  extern thread_local uint64_t __beta;
+  extern thread_local uint64_t __beta_cnt;
+  extern thread_local uint64_t __delta;
+  extern thread_local uint64_t __delta_cnt;
+  extern thread_local uint64_t __zeta;
+  extern thread_local uint64_t __zeta_cnt;
+
 namespace {
 static Status CreateMemTableRepFactory(
     const ConfigOptions& config_options,
@@ -4644,6 +4653,21 @@ class Benchmark {
 
   void WriteRandom(ThreadState* thread) {
     DoWrite(thread, RANDOM);
+    std::cout << "######################################" << std::endl;
+    std::cout << std::this_thread::get_id() << ": WriteWAL(sec) Tot\t" << __alpha * 1e-9 << std::endl;
+    if (__alpha_cnt != 0)
+      std::cout << std::this_thread::get_id() << ": WriteWAL(sec) Avg\t" << (__alpha / __alpha_cnt) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership(sec) Tot\t" << __beta * 1e-9 << std::endl;
+    if (__beta_cnt != 0)
+      std::cout << std::this_thread::get_id() << ": WaitForLeadership(sec) Avg\t" << (__beta / __beta_cnt ) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForMemtableWrite(sec) Tot\t" << __delta * 1e-9 << std::endl;
+    if (__delta_cnt != 0)
+      std::cout << std::this_thread::get_id() << ": WaitForMemtableWrite(sec) Avg\t" << (__delta / __delta_cnt) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": ZoneAppend Latency Tot\t" << __zeta * 1e-9 << std::endl;
+    if (__zeta_cnt != 0)
+      std::cout << std::this_thread::get_id() << ": ZoneAppend Latency Avg\t" << (__zeta / __zeta_cnt) * 1e-9 << std::endl;
+
+
   }
 
   void WriteUniqueRandom(ThreadState* thread) {
