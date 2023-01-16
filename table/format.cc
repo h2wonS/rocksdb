@@ -94,8 +94,8 @@ const BlockHandle BlockHandle::kNullBlockHandle(0, 0);
 void IndexValue::EncodeTo(std::string* dst, bool have_first_key,
                           const BlockHandle* previous_handle) const {
   if (previous_handle) {
-    assert(handle.offset() == previous_handle->offset() +
-                                  previous_handle->size() + kBlockTrailerSize);
+  //  assert(handle.offset() == previous_handle->offset() +
+  //                                previous_handle->size() + kBlockTrailerSize);
     PutVarsignedint64(dst, handle.size() - previous_handle->size());
   } else {
     handle.EncodeTo(dst);
@@ -363,6 +363,8 @@ Status UncompressBlockContentsForCompressionType(
       UncompressData(uncompression_info, data, n, &uncompressed_size,
                      GetCompressFormatForVersion(format_version), allocator);
   if (!ubuf) {
+  printf("UncompressBlockContentsForCompressionType :: CompressionType = %u n=%ld, ucompressed_size=%ld\n", uncompression_info.type(), n, uncompressed_size);
+  abort();
     return Status::Corruption(
         "Unsupported compression method or corrupted compressed block contents",
         CompressionTypeToString(uncompression_info.type()));

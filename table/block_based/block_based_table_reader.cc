@@ -1945,6 +1945,15 @@ Status BlockBasedTable::RetrieveBlock(
   {
     StopWatch sw(rep_->ioptions.clock, rep_->ioptions.stats,
                  READ_BLOCK_GET_MICROS);
+    if(for_compaction){
+//      printf("[READ] BBTableReader:: Level=%u, SST#=%lu\n", rep_->level_for_tracing(), rep_->sst_number_for_tracing());
+      if (block_type == BlockType::kData){
+        isDataBlock=true;
+      }
+      else{
+        isDataBlock = false;
+      }
+    }
     s = ReadBlockFromFile(
         rep_->file.get(), prefetch_buffer, rep_->footer, ro, handle, &block,
         rep_->ioptions, do_uncompress, maybe_compressed, block_type,

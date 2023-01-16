@@ -175,6 +175,8 @@ class ShortenedIndexBuilder : public IndexBuilder {
     std::string delta_encoded_entry;
     entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
     if (use_value_delta_encoding_ && !last_encoded_handle_.IsNull()) {
+      //printf("Last encoded_handle offset=0x%lx, size=%ld\n",
+     // last_encoded_handle_.offset(), last_encoded_handle_.size());
       entry.EncodeTo(&delta_encoded_entry, include_first_key_,
                      &last_encoded_handle_);
     } else {

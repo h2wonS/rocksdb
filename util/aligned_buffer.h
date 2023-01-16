@@ -234,6 +234,11 @@ public:
 
   // After a partial flush move the tail to the beginning of the buffer.
   void RefitTail(size_t tail_offset, size_t tail_size) {
+    if ((ssize_t)(tail_size) < 0){
+      printf("FUCK!~~~~~~~~~~~~~~~~~~~~~~~\n");
+      abort();
+    }
+
     if (tail_size > 0) {
       memmove(bufstart_, bufstart_ + tail_offset, tail_size);
     }

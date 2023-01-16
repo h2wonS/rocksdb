@@ -39,11 +39,24 @@ class OutputValidator {
   // without notice between releases.
   uint64_t GetHash() const { return paranoid_hash_; }
 
+  std::string GetPrevKey() {
+    return prev_key_;
+  }
+
+  void SetFileNum(int num) {
+    filenum = num;
+  }
+
+  int GetFileNum() {
+    return filenum;
+  }
+
  private:
   const InternalKeyComparator& icmp_;
   std::string prev_key_;
   uint64_t paranoid_hash_ = 0;
   bool enable_order_check_;
   bool enable_hash_;
+  int filenum = 0;
 };
 }  // namespace ROCKSDB_NAMESPACE

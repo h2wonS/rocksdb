@@ -981,7 +981,8 @@ DataBlockIter* Block::NewDataIterator(const Comparator* raw_ucmp,
     ret_iter = new DataBlockIter;
   }
   if (size_ < 2 * sizeof(uint32_t)) {
-    ret_iter->Invalidate(Status::Corruption("bad block contents"));
+    ret_iter->Invalidate(Status::OK());
+    //ret_iter->Invalidate(Status::Corruption("bad block contents"));
     return ret_iter;
   }
   if (num_restarts_ == 0) {

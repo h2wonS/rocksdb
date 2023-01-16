@@ -164,25 +164,22 @@ public:
     int len = static_cast<int>(key.size());
     writable_file_->smallest = new char[len+1];
     const char* _data = key.data();
-    printf("[WRITE] %s WFW::assignSmallestKey:", file_name_.c_str());
+//    printf("[WRITE] %s WFW::assignSmallestKey:", file_name_.c_str());
     for(int i=0; i<len; i++){
       writable_file_->smallest[i] = _data[i];
-      printf("%x", writable_file_->smallest[i]);
+//      printf("%x", writable_file_->smallest[i]);
     }
-    printf("\n");
+//    printf("\n");
     writable_file_->s_len = len;
   }
-  void assignLargestKey(const Slice& key){
+  void PrintLargestKey(const Slice& key){
     int len = static_cast<int>(key.size());
-    writable_file_->largest = new char[len+1];
     const char* _data = key.data();
-    printf("[WRITE] %s WFW::assignLargestKey:", file_name_.c_str());
-    for(int i=0; i<len; i++){
-      writable_file_->largest[i] = _data[i];
-      printf("%x", writable_file_->largest[i]);
-    }
-    printf("\n");
-    writable_file_->l_len = len;
+//    printf("[WRITE] %s WFW::assignLargestKey:", file_name_.c_str());
+//    for(int i=0; i<len; i++){
+//      printf("%x", _data[i]);
+//    }
+//    printf("\n");
   }
 
   uint64_t GetNextWriteOffset(){

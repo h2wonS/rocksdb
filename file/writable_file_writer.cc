@@ -125,18 +125,22 @@ IOStatus WritableFileWriter::Append(const Slice& data,
     // chunks
     if (use_direct_io() || (buf_->Capacity() >= left)) {
       while (left > 0) {
-        padded = buf_->Capacity() - buf_->CurrentSize();
-        if(isfirstCRC){
-          padded -= kBlockTrailerSize;
-          isfirstCRC=false;
+        size_t buf_left = buf_->Capacity() - buf_->CurrentSize();
+        if(!isfirstCRC){
+          buf_left -= kBlockTrailerSize + data.size();
+       //   printf("W/O CRC bufCurSize=%ld, buf_left=%ld\n", buf_->CurrentSize(), buf_left);
         }
         if(padded < data.size() || isIndexBlk){
           if(isIndexBlk){
             printf("????????????????Only First Flush because of leftDataBlk\n");
             isIndexBlk = false;
           }
-          printf("buf_left_size=%ld buf_cap=%ld, buf_current=%ld data_size=%ld\n", 
-          padded, buf_->Capacity(), buf_->CurrentSize(), data.size());
+          if(isfirstCRC){
+            isfirstCRC = false;
+          }
+          padded = buf_->Capacity() - buf_->CurrentSize();
+       //   printf("buf_left_size=%ld buf_cap=%ld, buf_current=%ld data_size=%ld\n", 
+       //   padded, buf_->Capacity(), buf_->CurrentSize(), data.size());
           buf_->PadWith(padded, 0);          
           printf("after padding %ldbytes, buf_padded size%ld\n", padded, buf_->CurrentSize());
           isPadded=true;
@@ -147,17 +151,17 @@ IOStatus WritableFileWriter::Append(const Slice& data,
             num2 = 0;
           }
           filesize_ += padded;
-          printf("paddingFlush filesize=%ld\n", filesize_);
+     //     printf("paddingFlush filesize=%ld\n", filesize_);
           if (!s.ok()) {
             break;
           }
 
         }
 
-        printf("buf_Cur_size=%ld data_size=%ld\n", buf_->CurrentSize(), data.size());
+     //   printf("buf_Cur_size=%ld data_size=%ld\n", buf_->CurrentSize(), data.size());
 
         size_t appended = buf_->Append(src, left);
-        printf("left=%ld, appended=%ld\n", left, appended);
+     //   printf("left=%ld, appended=%ld\n", left, appended);
         if (perform_data_verification_ && buffered_data_with_checksum_) {
           buffered_data_crc32c_checksum_ =
               crc32c::Extend(buffered_data_crc32c_checksum_, src, appended);
@@ -167,11 +171,11 @@ IOStatus WritableFileWriter::Append(const Slice& data,
 
         if (left>0) {
           s = Flush();
-            printf("%s WFW Flushed without paddinginRocks , CurrentFileSize=%ld\n###################################\n"
-            , file_name().c_str(), filesize_+buf_->CurrentSize());
+      //      printf("%s WFW Flushed without paddinginRocks , CurrentFileSize=%ld\n###################################\n"
+        //    , file_name().c_str(), filesize_+buf_->CurrentSize());
           if (num2 !=0){
-            printf("%s WFW Flushed without paddinginRocks , CurrentFileSize=%ld\n###################################\n"
-            , file_name().c_str(), filesize_+buf_->CurrentSize());
+      //      printf("%s WFW Flushed without paddinginRocks , CurrentFileSize=%ld\n###################################\n"
+        //    , file_name().c_str(), filesize_+buf_->CurrentSize());
             num2 = 0;
           }
           if (!s.ok()) {
@@ -194,7 +198,7 @@ IOStatus WritableFileWriter::Append(const Slice& data,
   TEST_KILL_RANDOM("WritableFileWriter::Append:1");
   if (s.ok()) {
     filesize_ += data.size();
-    printf("WFW Appended, CurrentFileSize=%ld\n", filesize_);
+ //   printf("WFW Appended, CurrentFileSize=%ld\n", filesize_);
   }
   return s;
 }
@@ -331,7 +335,7 @@ IOStatus WritableFileWriter::Flush() {
           s = WriteDirectWithChecksum();
         } else {
           //Write to zenfs
-          printf("Flush CurrentBufSize=%d\n", buf_->CurrentSize());
+   //       printf("Flush CurrentBufSize=%d\n", buf_->CurrentSize());
           s = WriteDirect();
 
           if (file_name_.substr(file_name_.size() - 3) == "sst") {
@@ -671,21 +675,22 @@ IOStatus WritableFileWriter::WriteDirect() {
 
   // Calculate whole page final file advance if all writes succeed
   size_t file_advance = TruncateToPageBoundary(alignment, buf_->CurrentSize());
-  if(file_advance == 0)
-    file_advance = alignment;
+  //if(file_advance == 0){
+  //  printf("SHIT FA==0\n");
+  //  file_advance = alignment;
+  //}
 
   // Calculate the leftover tail, we write it here padded with zeros BUT we
   // will write
   // it again in the future either on Close() OR when the current whole page
   // fills out
   size_t leftover_tail = buf_->CurrentSize() - file_advance;
+  if (leftover_tail < 0)
+    printf("%s leftover_tail=%ld, bufCurSize=%ld, file_advance=%ld, buf_=0x%lx\n",
+    file_name_.c_str(), leftover_tail, buf_->CurrentSize(), file_advance, buf_);
 
-  printf("%s BufCurSize=%ld file_advance=%ld\n"
-  , file_name_.c_str(), buf_->CurrentSize(), file_advance);
   // Round up and pad
   buf_->PadToAlignmentWith(0);
-  printf("%s After Pad BufCurSize=%ld file_advance=%ld\n"
-  , file_name_.c_str(), buf_->CurrentSize(), file_advance);
 
   const char* src = buf_->BufferStart();
   uint64_t write_offset = next_write_offset_;
@@ -711,14 +716,15 @@ IOStatus WritableFileWriter::WriteDirect() {
       if (ShouldNotifyListeners()) {
         start_ts = FileOperationInfo::StartNow();
       }
-      // direct writes must be positional
+    //PrintLargestKey(Slice(largest, l_len-8)); 
+
+            // direct writes must be positional
       if (perform_data_verification_) {
         Crc32cHandoffChecksumCalculation(src, size, checksum_buf);
         v_info.checksum = Slice(checksum_buf, sizeof(uint32_t));
         s = writable_file_->PositionedAppend(Slice(src, size), write_offset,
                                              IOOptions(), v_info, nullptr);
       } else {
-      printf("Append to offset=0x%lx size=%d left=%d\n", write_offset, size, left);
         s = writable_file_->PositionedAppend(Slice(src, size), write_offset,
                                              IOOptions(), smallest, largest, 
                                              s_len, l_len, 
@@ -739,7 +745,6 @@ IOStatus WritableFileWriter::WriteDirect() {
     left -= size;
     src += size;
     write_offset += size;
-    printf("Wrote %ldbytes then current write_offset=0x%lx\n",size, write_offset);
     assert((next_write_offset_ % alignment) == 0);
   }
 
@@ -753,7 +758,6 @@ IOStatus WritableFileWriter::WriteDirect() {
     // is a multiple of whole pages otherwise filesize_ is leftover_tail
     // behind
     next_write_offset_ += file_advance;
-    printf("Move tail to the beginning of the buf for (file_advance)%dbytes, next_write_offset=0x%lx\n", file_advance, next_write_offset_);
   }
   return s;
 }

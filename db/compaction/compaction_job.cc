@@ -207,6 +207,7 @@ struct CompactionJob::SubcompactionState {
     auto curr = current_output();
     assert(builder != nullptr);
     assert(curr != nullptr);
+    //curr->validator.SetFileNum(curr->meta.fd.packed_number_and_path_id);
     Status s = curr->validator.Add(key, value);
     if (!s.ok()) {
       return s;
@@ -395,6 +396,11 @@ CompactionJob::CompactionJob(
 CompactionJob::~CompactionJob() {
   assert(compact_ == nullptr);
   ThreadStatusUtil::ResetThreadStatus();
+  //printf("FUCK CompJOB\n");
+  delete comp_smallest;
+  delete comp_largest;
+  s_len = 0;
+  l_len = 0;
 }
 
 void CompactionJob::ReportStartedCompaction(Compaction* compaction) {
@@ -1174,17 +1180,52 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   for(auto& input:this->compact_->compaction->inputs_2){
     for(const auto& file:input.files){ 
       dbimpl_->mutex()->Lock();
-      for(int i=0;i<8;i++)
-        ROCKS_LOG_INFO(_logger,"job_%d %d input samllest key = %02X", job_id_, i, file->smallest.Encode().data_[i]);
+        //printf("LEVEL=%d job_%d inputfile %ld smallest key =", input.level, job_id_, file->fd.GetNumber());
+      for(int i=0;i<20;i++){
+        comp_smallest[i] = file->smallest.Encode().data_[i];
+       // printf("%x ", comp_smallest[i]);
+      }
+     // printf("\n");
       dbimpl_->mutex()->Unlock();
 
       dbimpl_->mutex()->Lock();
-      for(int i=0;i<8;i++)
-        ROCKS_LOG_INFO(_logger,"job_%d %d input largest key = %02X", job_id_, i, file->largest.Encode().data_[i]);
+       // printf("LEVEL=%d job_%d inputfile %ld largest key =", input.level, job_id_, file->fd.GetNumber());
+      for(int i=0;i<20;i++){
+        comp_largest[i] = file->largest.Encode().data_[i];
+       // printf("%x ",  comp_largest[i]);
+    }
+     // printf("\n");
       dbimpl_->mutex()->Unlock();
     }
   }
 #endif
+#if 0 
+  dbimpl_->mutex()->Lock();
+  printf("###################\nLEVEL=%d job_%d smallest key =", this->compact_->compaction->start_level(), job_id_);
+  start_level = this->compact_->compaction->start_level();
+  s_len = static_cast<int>(this->compact_->compaction->GetSmallestUserKey().size());
+  l_len = static_cast<int>(this->compact_->compaction->GetLargestUserKey().size());
+
+  comp_smallest = new char[s_len+1];
+  comp_largest = new char[l_len+1];
+  for(int i=0;i<s_len;i++){
+    comp_smallest[i] =  this->compact_->compaction->GetSmallestUserKey().data()[i];
+    printf("%x", comp_smallest[i]);
+  }
+  printf("\n");
+  dbimpl_->mutex()->Unlock();
+
+  dbimpl_->mutex()->Lock();
+  printf("job_%d largest key =", job_id_);
+  for(int i=0;i<l_len;i++){
+    comp_largest[i] = this->compact_->compaction->GetLargestUserKey().data()[i];
+    printf("%x", comp_largest[i]);
+  }
+  printf("\n");
+  dbimpl_->mutex()->Unlock();
+
+#endif
+
   const Slice* const start = sub_compact->start;
   const Slice* const end = sub_compact->end;
 
@@ -1332,12 +1373,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
 #if 0
   dbimpl_->mutex()->Lock();
-    printf("job_%d first key", job_id_);
+    //printf("job_%d first key", job_id_);
     for(int i=0;i<20;i++){
     ROCKS_LOG_INFO(_logger,"job_%d %d first userkey = %02X", job_id_, i, c_iter->key().data_[i]);
-    printf("%x", c_iter->user_key().data_[i]);
+   // printf("%x", c_iter->user_key().data_[i]);
   }
-  printf("\n");
+ // printf("\n");
  dbimpl_->mutex()->Unlock();
 #endif 
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
@@ -1375,7 +1416,6 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
     //write
 //    ROCKS_LOG_INFO(_logger,"job_%d time_micros %llu Write start", job_id_, db_options_.clock->NowMicros());
-   
     status = sub_compact->AddToBuilder(key, value);
     if (!status.ok()) {
       break;
@@ -1470,10 +1510,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       
 #if 0 
       dbimpl_->mutex()->Lock();
-        printf("job_%d last key =", job_id_);
+        //printf("job_%d last key =", job_id_);
       for(int i=0;i<20;i++){
         ROCKS_LOG_INFO(_logger,"job_%d %d last key = %02X", job_id_, i, str_[i]);
-      
+    //    printf("%x", str_[i]);
+      }
+    //  printf("\n");
       dbimpl_->mutex()->Unlock();
       
       if(next_key != nullptr)

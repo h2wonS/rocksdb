@@ -68,7 +68,8 @@ class FilePrefetchBuffer {
         implicit_auto_readahead_(implicit_auto_readahead),
         prev_offset_(0),
         prev_len_(0),
-        num_file_reads_(kMinNumFileReadsToStartAutoReadahead + 1) {
+        num_file_reads_(kMinNumFileReadsToStartAutoReadahead + 1),
+        ValidRead(true){
           buffer_ = new AlignedBuffer;
           buffer_2 = new AlignedBuffer;
           buffer_3 = new AlignedBuffer;
@@ -83,6 +84,7 @@ class FilePrefetchBuffer {
       delete buffer_->Release();
       delete buffer_2->Release();
       delete buffer_3->Release();
+      ValidRead = true;
     }
 
   // Load data into the buffer from a file.
@@ -154,5 +156,8 @@ class FilePrefetchBuffer {
   size_t prev_offset_;
   size_t prev_len_;
   int num_file_reads_;
+
+ public:
+  std::atomic<bool> ValidRead;
 };
 }  // namespace ROCKSDB_NAMESPACE

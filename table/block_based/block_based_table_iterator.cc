@@ -9,6 +9,8 @@
 #include "table/block_based/block_based_table_iterator.h"
 
 namespace ROCKSDB_NAMESPACE {
+
+extern std::shared_ptr<Logger> _logger;
 void BlockBasedTableIterator::Seek(const Slice& target) { SeekImpl(&target); }
 
 void BlockBasedTableIterator::SeekToFirst() { SeekImpl(nullptr); }
@@ -188,6 +190,11 @@ bool BlockBasedTableIterator::NextAndGetResult(IterateResult* result) {
   Next();
   bool is_valid = Valid();
   if (is_valid) {
+    if (key().size() == 0) {
+      printf("SHIT!!!!!!!!!!!!!!!!!!!!!!!\n");
+  ROCKS_LOG_INFO(_logger,"KeySize is ZERO");
+      abort();
+    }
     result->key = key();
     result->bound_check_result = UpperBoundCheckResult();
     result->value_prepared = !is_at_first_key_from_index_;

@@ -43,7 +43,8 @@ Status VerifyBlockChecksum(ChecksumType type, const char* data,
       printf("VerifyChecksum::filename=%s stored=%s, computed=%s blk_size=%d, datablk_size=%d, offset=0x%lx FileSize=%ld\n", 
       file_name.c_str(), ToString(stored).c_str(), ToString(computed).c_str(), block_size, strlen(data), offset, offset);
       if(stored!=computed)
-        printf("!!!!!!!!!!!!!!!FUCK SHIT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+        printf("%s mismatch stored=%u, computed=%u, blockSize(len=%ld)=%ld, offset=0x%lx\n",
+        file_name.c_str(), stored, computed, len, block_size, offset);
       break;
     case kxxHash:
       computed = XXH32(data, len, 0);

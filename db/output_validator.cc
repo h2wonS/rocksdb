@@ -6,6 +6,9 @@
 #include "db/output_validator.h"
 
 namespace ROCKSDB_NAMESPACE {
+
+extern std::shared_ptr<Logger> _logger;
+
 Status OutputValidator::Add(const Slice& key, const Slice& value) {
   if (enable_hash_) {
     // Generate a rolling 64-bit hash of the key and values
@@ -19,8 +22,27 @@ Status OutputValidator::Add(const Slice& key, const Slice& value) {
       return Status::Corruption(
           "Compaction tries to write a key without internal bytes.");
     }
+
     // prev_key_ starts with empty.
     if (!prev_key_.empty() && icmp_.Compare(key, prev_key_) < 0) {
+
+//      printf("Shit We need prev_key with empty, but this is fuck Prev(%d), Curr(%d)\n", 
+//      prev_key_.size(), key.size());
+
+//      ROCKS_LOG_INFO(_logger,"%dSST Shit We need prev_key with empty, but this is fuck Prev(%d), Curr(%d)", 
+//      filenum, prev_key_.size(), key.size());
+
+
+//      for(int i=0;i<=12;i++){
+//        ROCKS_LOG_INFO(_logger,"%dSST PrevKey[%d]=%x", filenum, i, prev_key_.data()[i]);
+//      }
+//      for(int i=0;i<=12;i++){
+//        ROCKS_LOG_INFO(_logger,"CurrentKey[%d]=%x", i, key.data()[i]);
+//      }
+//      printf(" prev_key is empty(%d), Compare w/ (key, prev_key) =%d\n",
+//          prev_key_.empty(), icmp_.Compare(key, prev_key_));
+
+      abort(); 
       return Status::Corruption("Compaction sees out-of-order keys.");
     }
     prev_key_.assign(key.data(), key.size());

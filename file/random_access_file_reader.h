@@ -90,7 +90,7 @@ class RandomAccessFileReader {
         hist_type_(hist_type),
         file_read_hist_(file_read_hist),
         rate_limiter_(rate_limiter),
-        listeners_() {
+        listeners_(){
 #ifndef ROCKSDB_LITE
     std::for_each(listeners.begin(), listeners.end(),
                   [this](const std::shared_ptr<EventListener>& e) {

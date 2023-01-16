@@ -105,8 +105,9 @@ static void Prefetch2(FilePrefetchBuffer* p_buffer, const IOOptions& opts,
   size_t read_len = static_cast<size_t>(roundup_len - chunk_len);
   int R_NUM = 16;
   
+  //printf("%s read_len=%ld, read_len%R_NUM=%ld\n", reader->file_name().c_str(), read_len, read_len%R_NUM);
   if(read_len%R_NUM == 0){
-//    ROCKS_LOG_INFO(_logger,"%s prefetch start!!", reader->file_name().c_str());
+    ROCKS_LOG_INFO(_logger,"%s prefetch start!!", reader->file_name().c_str());
     size_t div_len = read_len / R_NUM;
     
     for(int i=0;i<R_NUM;i++){ 
@@ -118,7 +119,7 @@ static void Prefetch2(FilePrefetchBuffer* p_buffer, const IOOptions& opts,
       thread.join();
     }
 
-//    ROCKS_LOG_INFO(_logger,"%s prefetch end!!", reader->file_name().c_str());
+    ROCKS_LOG_INFO(_logger,"%s prefetch end!!", reader->file_name().c_str());
     p_buffer->read_thread_pool_.clear();
   }
   else{
@@ -140,6 +141,7 @@ static void background_read(FilePrefetchBuffer* p_buffer, const IOOptions& opts,
                             uint64_t offset, size_t n, AlignedBuffer* buf_){
   Slice result;
   thread_reader_(reader, opts, offset, 0, n, &result, buf_, true, 0);
+ // printf("%s BGREAD resultSize=%ld\n", reader->file_name().c_str(), result.size());
   buf_->Size(result.size());
 }
 
@@ -148,21 +150,32 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
                                     uint64_t offset, size_t n,
                                     bool for_compaction) { 
   if(for_compaction) {
-//    Prefetch2(this, opts, reader, offset, n, for_compaction, buffer_); 
+    //    Prefetch2(this, opts, reader, offset, n, for_compaction, buffer_); 
 #if 1
-//cold miss
-    if(buffer_->CurrentSize() == 0 && buffer_2->CurrentSize() == 0) {
+    //cold miss
+    if(buffer_->CurrentSize() == 0 && buffer_2->CurrentSize() == 0 && ValidRead) {
+    //  printf("%s COLD MISS\n", reader->file_name().c_str());
       Prefetch2(this, opts, reader, offset, n, for_compaction, buffer_);
       thread_ = std::thread(background_read, this, opts, reader, buffer_offset_+buffer_->CurrentSize(), n, buffer_2);
     }
     else if(buffer_->CurrentSize() > 0 && offset >= buffer_offset_ &&
-            offset <= buffer_offset_ + buffer_->CurrentSize()) { //buffer_ hit
+        offset <= buffer_offset_ + buffer_->CurrentSize()) { //buffer_ hit
       if(offset + n <= buffer_offset_ + buffer_->CurrentSize()) { //buffer_ full hit
         return Status::OK();
       }
       else { // refitail and buffer_2 get
 #if 1    
-        if(thread_.joinable()) thread_.join();
+        //printf("%s REFITTAIL\n", reader->file_name().c_str());
+        if(thread_.joinable()){
+      //    printf("%s %d JOIN buf2Size=%ld\n", reader->file_name().c_str(), __LINE__, buffer_2->CurrentSize());
+          if (!buffer_2->CurrentSize()){
+      //    printf("%s %d shit!!\n", reader->file_name().c_str(), __LINE__);
+            ValidRead = false;
+            thread_.join();
+            return Status::OK();
+          }
+          thread_.join();
+        }
         size_t tmp_offset = static_cast<size_t>(offset);
         uint64_t tmp_rounddown_offset = Rounddown(tmp_offset, 4096);
         uint64_t tmp_roundup_end = Roundup(tmp_offset + n, 4096);
@@ -177,7 +190,7 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
         assert(tmp_chunk_offset_in_buffer % 4096 == 0);
         assert(tmp_chunk_len % 4096 == 0);
         assert(tmp_chunk_offset_in_buffer + tmp_chunk_len <=
-               buffer_offset_ + buffer_->CurrentSize());
+            buffer_offset_ + buffer_->CurrentSize());
 
         if(buffer_->Capacity() < tmp_roundup_len){
           buffer_->Alignment(4096);
@@ -185,11 +198,11 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
         }
         else if(tmp_chunk_len >0){
           buffer_->RefitTail(static_cast<size_t>(tmp_chunk_offset_in_buffer),
-                            static_cast<size_t>(tmp_chunk_len));
+              static_cast<size_t>(tmp_chunk_len));
         }
 
         size_t tmp_read_len = static_cast<size_t>(tmp_roundup_len - tmp_chunk_len);
-              
+
         memcpy(buffer_->BufferStart()+tmp_chunk_len, buffer_2->BufferStart(), tmp_read_len);
         buffer_->Size(static_cast<size_t>(tmp_chunk_len) + tmp_read_len); 
         buffer_offset_ += tmp_chunk_offset_in_buffer;
@@ -198,9 +211,19 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
         return Status::OK();
       }
     }
-    else if(offset >= buffer_offset_ + buffer_->CurrentSize()){ 
+    else if(offset >= buffer_offset_ + buffer_->CurrentSize() && ValidRead){ 
+    //  printf("%s BUF2 FUllHIT\n", reader->file_name().c_str());
       ROCKS_LOG_INFO(_logger,"%s buffer_2 full hit, offset=%ld, length=%ld", reader->file_name().c_str(), offset, n);
-      if(thread_.joinable()) thread_.join();
+      if(thread_.joinable()){
+   //     printf("%s %d JOIN buf2Size=%ld\n", reader->file_name().c_str(), __LINE__, buffer_2->CurrentSize());
+        if (!buffer_2->CurrentSize()){
+    //      printf("%s %d shit!!\n", reader->file_name().c_str(), __LINE__);
+          ValidRead = false;
+          thread_.join();
+          return Status::OK();
+        }
+        thread_.join();
+      }
       //swap 
       buffer_3 = buffer_2;
       buffer_ = buffer_3;
@@ -211,7 +234,7 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
 #endif
     return Status::OK();
   }
-  
+
   if (!enable_ || reader == nullptr) {
     return Status::OK();
   }
@@ -223,8 +246,8 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
   uint64_t roundup_len = roundup_end - rounddown_offset;
   assert(roundup_len >= alignment);
   assert(roundup_len % alignment == 0);
-  printf("PrefetchInit offset=%ld, n=%ld rounddown_offset=%ld, roundup_end=%ld, roundup_len=%ld\n"
-  ,offset, n, rounddown_offset, roundup_end, roundup_len);
+  //  printf("%s PrefetchInit offset=%ld, n=%ld rounddown_offset=%ld, roundup_end=%ld, roundup_len=%ld\n"
+  //  ,reader->file_name().c_str(), offset, n, rounddown_offset, roundup_end, roundup_len);
 
   // Check if requested bytes are in the existing buffer_.
   // If all bytes exist -- return.
@@ -247,12 +270,12 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
       // bytes to the beginning, and memcpy them back into the new buffer if a
       // new buffer is created.
       chunk_offset_in_buffer =
-          Rounddown(static_cast<size_t>(offset - buffer_offset_), alignment);
+        Rounddown(static_cast<size_t>(offset - buffer_offset_), alignment);
       chunk_len = buffer_->CurrentSize() - chunk_offset_in_buffer;
       assert(chunk_offset_in_buffer % alignment == 0);
       assert(chunk_len % alignment == 0);
       assert(chunk_offset_in_buffer + chunk_len <=
-             buffer_offset_ + buffer_->CurrentSize());
+          buffer_offset_ + buffer_->CurrentSize());
       if (chunk_len > 0) {
         copy_data_to_new_buffer = true;
       } else {
@@ -267,20 +290,20 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
   if (buffer_->Capacity() < roundup_len) {
     buffer_->Alignment(alignment);
     buffer_->AllocateNewBuffer(static_cast<size_t>(roundup_len),
-                              copy_data_to_new_buffer, chunk_offset_in_buffer,
-                              static_cast<size_t>(chunk_len));
+        copy_data_to_new_buffer, chunk_offset_in_buffer,
+        static_cast<size_t>(chunk_len));
   } else if (chunk_len > 0) {
     // New buffer not needed. But memmove bytes from tail to the beginning since
     // chunk_len is greater than 0.
     buffer_->RefitTail(static_cast<size_t>(chunk_offset_in_buffer),
-                      static_cast<size_t>(chunk_len));
+        static_cast<size_t>(chunk_len));
   }
 
   Slice result;
   size_t read_len = static_cast<size_t>(roundup_len - chunk_len);
-  printf("Prefetch chunk_len=%ld, read_len=%ld rounddown_offset=%ld\n", chunk_len, read_len, rounddown_offset);
+  //  printf("%s Prefetch chunk_len=%ld, read_len=%ld rounddown_offset=%ld\n", reader->file_name().c_str(), chunk_len, read_len, rounddown_offset);
   s = reader->Read(opts, rounddown_offset + chunk_len, read_len, &result,
-                   buffer_->BufferStart() + chunk_len, nullptr, for_compaction);
+      buffer_->BufferStart() + chunk_len, nullptr, for_compaction);
   if (!s.ok()) {
     return s;
   }
@@ -325,6 +348,7 @@ bool FilePrefetchBuffer::TryReadFromCache(const IOOptions& opts,
       if (for_compaction) {
         s = Prefetch(opts, file_reader_, offset, std::max(n, readahead_size_),
                      for_compaction);
+    //    printf("############################ Buf2Size=%ld Offset==0x%lx PrefetchSizemax(n,rasize)=%ld, SliceSize(n)=%ld\n", buffer_2->CurrentSize(), offset, std::max(n, readahead_size_), n);
       } else {
         if (implicit_auto_readahead_) {
           // Prefetch only if this read is sequential otherwise reset
@@ -344,8 +368,6 @@ bool FilePrefetchBuffer::TryReadFromCache(const IOOptions& opts,
             return false;
           }
         }
-        printf("TryReadFromCache offset=%lu, toread(n+rasize)=%ld,rasize=%ld\n",
-        offset, n+readahead_size_, readahead_size_);
         s = Prefetch(opts, file_reader_, offset, n + readahead_size_,
                      for_compaction);
       }

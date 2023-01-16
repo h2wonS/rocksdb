@@ -60,7 +60,25 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
       AlignedBuffer buf;
       buf.Alignment(alignment);
       buf.AllocateNewBuffer(read_size);
-      while (buf.CurrentSize() < read_size) {
+
+      is_for_compaction = for_compaction;
+#if 1
+      if(for_compaction && file_name().substr(file_name().size() - 3) == "sst") {
+        file_->smallest = new char[s_len+1];
+        file_->largest = new char[l_len+1];
+        for (int i=0; i<s_len; i++){
+          file_->smallest[i] = comp_smallest[i];
+        }
+        file_->s_len = s_len;
+        for (int i=0; i<l_len; i++){
+          file_->largest[i] = comp_largest[i];
+        }
+        file_->l_len = l_len;
+      }
+#endif
+
+ 
+     while (buf.CurrentSize() < read_size) {
         size_t allowed;
         if (for_compaction && rate_limiter_ != nullptr) {
           allowed = rate_limiter_->RequestToken(
@@ -87,15 +105,24 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
           // the opts.timeout before calling file_->Read
           assert(!opts.timeout.count() || allowed == read_size);
 
-          printf("%s RAFR Read buf.Cap = %d, buf.CurrentSize=%d, buf.Dest=0x%lx aligned_offset=%ld, allowed=%d\n", 
-          file_name().c_str(), buf.Capacity(),buf.CurrentSize(), 
-          buf.Destination(), aligned_offset, allowed);
-          printf("%s RAFR Read original toread=%ld, offset=%ld alignment=%ld\n",
-          file_name().c_str(), n, offset, alignment);
+        //  printf("%s RAFR Read buf.Cap = %d, buf.CurrentSize=%d, buf.Dest=0x%lx aligned_offset=%ld, allowed=%d\n", 
+        //  file_name().c_str(), buf.Capacity(),buf.CurrentSize(), 
+        //  buf.Destination(), aligned_offset, allowed);
+       //   printf("%s RAFR Read original toread=%ld, offset=%ld alignment=%ld\n",
+       //   file_name().c_str(), n, offset, alignment);
           io_s = file_->Read(aligned_offset + buf.CurrentSize(), allowed, opts, &tmp, buf.Destination(), nullptr);
 
-          /*if(for_compaction && file_name().substr(file_name().size() - 3) == "sst")
-            printf("allowed=%d\n", allowed);*/
+#if 1
+          if(for_compaction && file_name().substr(file_name().size() - 3) == "sst"){
+            delete file_->smallest;
+            delete file_->largest;
+            file_->smallest = nullptr;
+            file_->largest = nullptr;
+
+            ROCKS_LOG_INFO(_logger, "%s RAFR allowed=%d, tmp_size=%ld", file_name().c_str(), allowed, tmp.size());
+          }
+#endif
+            
         }
         if (ShouldNotifyListeners()) {
           auto finish_ts = FileOperationInfo::FinishNow();
@@ -118,6 +145,8 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
           aligned_buf->reset(buf.Release());
         }
       }
+     // printf("%s res_len=%d, offset_advance=%ld, bufCurSize=%ld\n",
+     // file_name().c_str(), res_len, offset_advance, buf.CurrentSize());
       *result = Slice(scratch, res_len);
 #endif  // !ROCKSDB_LITE
     } else {

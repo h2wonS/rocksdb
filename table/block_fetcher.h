@@ -12,6 +12,7 @@
 #include "table/block_based/block.h"
 #include "table/block_based/block_type.h"
 #include "table/format.h"
+#include <atomic>
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -62,7 +63,7 @@ class BlockFetcher {
         cache_options_(cache_options),
         memory_allocator_(memory_allocator),
         memory_allocator_compressed_(memory_allocator_compressed),
-        for_compaction_(for_compaction) {
+        for_compaction_(for_compaction){
     io_status_.PermitUncheckedError();  // TODO(AR) can we improve on this?
   }
 
@@ -127,5 +128,6 @@ class BlockFetcher {
   void InsertCompressedBlockToPersistentCacheIfNeeded();
   void InsertUncompressedBlockToPersistentCacheIfNeeded();
   void CheckBlockChecksum();
+
 };
 }  // namespace ROCKSDB_NAMESPACE
