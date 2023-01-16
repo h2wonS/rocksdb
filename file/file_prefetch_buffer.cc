@@ -223,6 +223,8 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
   uint64_t roundup_len = roundup_end - rounddown_offset;
   assert(roundup_len >= alignment);
   assert(roundup_len % alignment == 0);
+  printf("PrefetchInit offset=%ld, n=%ld rounddown_offset=%ld, roundup_end=%ld, roundup_len=%ld\n"
+  ,offset, n, rounddown_offset, roundup_end, roundup_len);
 
   // Check if requested bytes are in the existing buffer_.
   // If all bytes exist -- return.
@@ -276,6 +278,7 @@ Status FilePrefetchBuffer::Prefetch(const IOOptions& opts,
 
   Slice result;
   size_t read_len = static_cast<size_t>(roundup_len - chunk_len);
+  printf("Prefetch chunk_len=%ld, read_len=%ld rounddown_offset=%ld\n", chunk_len, read_len, rounddown_offset);
   s = reader->Read(opts, rounddown_offset + chunk_len, read_len, &result,
                    buffer_->BufferStart() + chunk_len, nullptr, for_compaction);
   if (!s.ok()) {
@@ -341,6 +344,8 @@ bool FilePrefetchBuffer::TryReadFromCache(const IOOptions& opts,
             return false;
           }
         }
+        printf("TryReadFromCache offset=%lu, toread(n+rasize)=%ld,rasize=%ld\n",
+        offset, n+readahead_size_, readahead_size_);
         s = Prefetch(opts, file_reader_, offset, n + readahead_size_,
                      for_compaction);
       }

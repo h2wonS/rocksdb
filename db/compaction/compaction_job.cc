@@ -1332,9 +1332,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
 #if 0
   dbimpl_->mutex()->Lock();
-  for(int i=0;i<8;i++)
-    ROCKS_LOG_INFO(_logger,"job_%d %d first key = %02X", job_id_, i, c_iter->key().data_[i]);
-  dbimpl_->mutex()->Unlock();
+    printf("job_%d first key", job_id_);
+    for(int i=0;i<20;i++){
+    ROCKS_LOG_INFO(_logger,"job_%d %d first userkey = %02X", job_id_, i, c_iter->key().data_[i]);
+    printf("%x", c_iter->user_key().data_[i]);
+  }
+  printf("\n");
+ dbimpl_->mutex()->Unlock();
 #endif 
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     k++;
@@ -1346,7 +1350,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 #if 0
     std::string str_ = "";
     dbimpl_->mutex()->Lock();
-    for(int i=0;i<8;i++)
+    for(int i=0;i<20;i++){
       str_ += c_iter->key().data_[i];
     dbimpl_->mutex()->Unlock();
 #endif
@@ -1466,14 +1470,15 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       
 #if 0 
       dbimpl_->mutex()->Lock();
-      for(int i=0;i<8;i++)
+        printf("job_%d last key =", job_id_);
+      for(int i=0;i<20;i++){
         ROCKS_LOG_INFO(_logger,"job_%d %d last key = %02X", job_id_, i, str_[i]);
       
       dbimpl_->mutex()->Unlock();
       
       if(next_key != nullptr)
         dbimpl_->mutex()->Lock();
-        for(int i=0;i<8;i++)
+        for(int i=0;i<20;i++)
           ROCKS_LOG_INFO(_logger,"job_%d %d next first key = %02X", job_id_, i, next_key->data_[i]);
         dbimpl_->mutex()->Unlock();
       ROCKS_LOG_INFO(_logger,"job_%d time_micros %llu output_file_ended", job_id_, db_options_.clock->NowMicros());

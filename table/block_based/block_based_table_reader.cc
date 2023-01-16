@@ -66,6 +66,9 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 
+bool isDataBlock = false;
+
+
 namespace ROCKSDB_NAMESPACE {
 
 extern std::shared_ptr<Logger> _logger;
@@ -693,10 +696,11 @@ Status BlockBasedTable::PrefetchTail(
     // index/filter is enabled and top-level partition pinning is enabled.
     // That's because we need to issue readahead before we read the properties,
     // at which point we don't yet know the index type.
-    tail_prefetch_size = prefetch_all || preload_all ? 512 * 1024 : 4 * 1024;
+    tail_prefetch_size = prefetch_all || preload_all ? 3*192 * 1024 + 4096 : 4 * 1024;
   }
   size_t prefetch_off;
   size_t prefetch_len;
+  printf("BBTreader PrefetchTail file_size=%ld, tail_prefetch_size=%ld\n", file_size, tail_prefetch_size);
   if (file_size < tail_prefetch_size) {
     prefetch_off = 0;
     prefetch_len = static_cast<size_t>(file_size);
@@ -704,6 +708,7 @@ Status BlockBasedTable::PrefetchTail(
     prefetch_off = static_cast<size_t>(file_size - tail_prefetch_size);
     prefetch_len = tail_prefetch_size;
   }
+  printf("BBTreader PrefetchTail prefetch_off=0x%lx, prefetch_len=%ld\n", prefetch_off, prefetch_len);
   TEST_SYNC_POINT_CALLBACK("BlockBasedTable::Open::TailPrefetchLen",
                            &tail_prefetch_size);
 
@@ -1966,6 +1971,16 @@ Status BlockBasedTable::RetrieveBlock(
           break;
       }
     }
+    if(for_compaction){
+      printf("[READ] BBTableReader:: Level=%u, SST#=%lu\n", rep_->level_for_tracing(), rep_->sst_number_for_tracing());
+      if (block_type == BlockType::kData){
+        isDataBlock=true;
+      }
+      else{
+        isDataBlock = false;
+      }
+    }
+
   }
 
   if (!s.ok()) {

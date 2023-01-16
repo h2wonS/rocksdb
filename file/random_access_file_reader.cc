@@ -86,8 +86,16 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
           // one iteration of this loop, so we don't need to check and adjust
           // the opts.timeout before calling file_->Read
           assert(!opts.timeout.count() || allowed == read_size);
-          io_s = file_->Read(aligned_offset + buf.CurrentSize(), allowed, opts,
-                             &tmp, buf.Destination(), nullptr);
+
+          printf("%s RAFR Read buf.Cap = %d, buf.CurrentSize=%d, buf.Dest=0x%lx aligned_offset=%ld, allowed=%d\n", 
+          file_name().c_str(), buf.Capacity(),buf.CurrentSize(), 
+          buf.Destination(), aligned_offset, allowed);
+          printf("%s RAFR Read original toread=%ld, offset=%ld alignment=%ld\n",
+          file_name().c_str(), n, offset, alignment);
+          io_s = file_->Read(aligned_offset + buf.CurrentSize(), allowed, opts, &tmp, buf.Destination(), nullptr);
+
+          /*if(for_compaction && file_name().substr(file_name().size() - 3) == "sst")
+            printf("allowed=%d\n", allowed);*/
         }
         if (ShouldNotifyListeners()) {
           auto finish_ts = FileOperationInfo::FinishNow();

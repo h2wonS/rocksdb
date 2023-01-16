@@ -40,6 +40,10 @@ Status VerifyBlockChecksum(ChecksumType type, const char* data,
     case kCRC32c:
       stored = crc32c::Unmask(stored);
       computed = crc32c::Value(data, len);
+      printf("VerifyChecksum::filename=%s stored=%s, computed=%s blk_size=%d, datablk_size=%d, offset=0x%lx FileSize=%ld\n", 
+      file_name.c_str(), ToString(stored).c_str(), ToString(computed).c_str(), block_size, strlen(data), offset, offset);
+      if(stored!=computed)
+        printf("!!!!!!!!!!!!!!!FUCK SHIT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
       break;
     case kxxHash:
       computed = XXH32(data, len, 0);

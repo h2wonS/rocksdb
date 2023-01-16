@@ -902,11 +902,53 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     }
 #endif  // !NDEBUG
 
+    if(r->file->file_name().substr(r->file->file_name().size() - 3) == "sst") {
+      if(r->file->num2 == 0) {
+        int len = static_cast<int>(key.size());
+        r->file->smallest = new char[len+1];
+        r->file->num2++;
+          r->file->s_len = len;
+
+        const char *_data = key.data();
+        printf("[WRITE] BBT Add:: SmallestKey=");
+        for (int i= 0; i<len; i++) {
+          r->file->smallest[i] = _data[i];
+          printf("%x", r->file->smallest[i]);
+        }
+        printf("\n");
+
+        r->file->assignSmallestKey(Slice(r->file->smallest, len-8));
+      }
+      r->num++;
+      printf("num2!=0 !should_flush:: CurrentKey=");
+      for(int i=0; i<20; i++){
+        printf("%x", key.data()[i]);
+      }
+      printf("\n");
+    }
+
+
     auto should_flush = r->flush_block_policy->Update(key, value);
     if (should_flush) {
       assert(!r->data_block.empty());
-      r->first_key_in_next_block = &key;
-      Flush();
+      r->first_key_in_next_block = &key; 
+
+      if(r->file->file_name().substr(r->file->file_name().size() - 3) == "sst") {
+        r->num = 0;
+        if(r->file->num2 != 0) {
+          int len = static_cast<int>(key.size());
+          r->file->l_len = len;
+          r->file->largest = new char[len+1];
+          const char *_data = key.data();
+          printf("LARGESTKEY==");
+          for (int i=0; i<len; i++){
+            r->file->largest[i] = _data[i];
+            printf("%x", _data[i]);
+          }
+          printf("\n");
+        }
+      }
+     Flush();
       if (r->state == Rep::State::kBuffered) {
         bool exceeds_buffer_limit =
             (r->buffer_limit != 0 && r->data_begin_offset > r->buffer_limit);
@@ -1048,7 +1090,6 @@ void BlockBasedTableBuilder::WriteBlock(const Slice& raw_block_contents,
   if (!ok()) {
     return;
   }
-
   WriteRawBlock(block_contents, type, handle, block_type, &raw_block_contents);
   r->compressed_output.clear();
   if (is_data_block) {
@@ -1211,13 +1252,37 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
                                            const Slice* raw_block_contents) {
   Rep* r = rep_;
   bool is_data_block = block_type == BlockType::kData;
+  bool is_index_block = block_type == BlockType::kIndex;
   Status s = Status::OK();
   IOStatus io_s = IOStatus::OK();
   StopWatch sw(r->ioptions.clock, r->ioptions.stats, WRITE_RAW_BLOCK_MICROS);
+
+  if(is_index_block){
+    printf("is IndexBlock\n");
+    r->file->isIndexBlk = true;
+  }
+  printf("%s Beforepadded offset=0x%lx\n", 
+      r->file->file_name().c_str(), r->get_offset());
+  if(r->file->isPadded && is_data_block || is_index_block){
+    printf("padding %d bytes\n", r->file->padded);
+    r->set_offset(r->get_offset() + r->file->padded);
+    printf("%s Afterpadded offset=0x%lx\n", r->file->file_name().c_str(), r->get_offset());
+    r->file->isPadded = false;
+  }
+
   handle->set_offset(r->get_offset());
   handle->set_size(block_contents.size());
   assert(status().ok());
   assert(io_status().ok());
+
+
+  printf("%s WriteRawBlock IsDataBlk=%d IsIndexBlk=%d blk_contents_size=%d handle_offset=0x%lx FileSize=%ld\n", 
+      r->file->file_name().c_str(), is_data_block, is_index_block,
+      static_cast<int>(block_contents.size()), 
+      handle->offset(), FileSize());
+  r->file->chunk_size = block_contents.size()+kBlockTrailerSize;
+  printf("WFW ChunkSize=%d\n", r->file->chunk_size);
+
   io_s = r->file->Append(block_contents);
   if (io_s.ok()) {
     char trailer[kBlockTrailerSize];
@@ -1229,9 +1294,20 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
       case kCRC32c: {
         uint32_t crc =
             crc32c::Value(block_contents.data(), block_contents.size());
+#if 0
+        printf("[WRITE] WriteRawBlock CRC::filename=%s crc=%s, blk_contents_size=%d handle_offset=0x%lx FileSize=%ld\n", 
+        r->file->file_name().c_str(), ToString(crc).c_str(), static_cast<int>(block_contents.size()), handle->offset(), FileSize());
+#endif
         // Extend to cover compression type
         crc = crc32c::Extend(crc, trailer, 1);
         checksum = crc32c::Mask(crc);
+#if 0
+        printf("WriteRawBlock STORED_CRC::filename=%s crc=%s blk_size=%d offset=0x%lx\n", 
+        r->file->file_name().c_str(), 
+        ToString(crc32c::Unmask(DecodeFixed32(block_contents.data() + block_contents.size()))).c_str(),
+        static_cast<int>(block_contents.size()),
+        handle->offset());
+#endif
         break;
       }
       case kxxHash: {
@@ -1244,7 +1320,8 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
         XXH32_freeState(state);
         break;
       }
-      case kxxHash64: {
+      case kxxHash64: 
+      {
         XXH64_state_t* const state = XXH64_createState();
         XXH64_reset(state, 0);
         XXH64_update(state, block_contents.data(), block_contents.size());
@@ -1263,6 +1340,8 @@ void BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
     TEST_SYNC_POINT_CALLBACK(
         "BlockBasedTableBuilder::WriteRawBlock:TamperWithChecksum",
         static_cast<char*>(trailer));
+    r->file->isPadded=true;
+    r->file->isfirstCRC=true;
     io_s = r->file->Append(Slice(trailer, kBlockTrailerSize));
     if (io_s.ok()) {
       assert(s.ok());
@@ -1803,7 +1882,18 @@ void BlockBasedTableBuilder::WriteFooter(BlockHandle& metaindex_block_handle,
   assert(ok());
   IOStatus ios = r->file->Append(footer_encoding);
   if (ios.ok()) {
+    printf("FooterOffset=0x%lx, nextwriteoffset=0x%lx, cur_buf_size=%ld\n",
+    r->get_offset(), r->file->GetNextWriteOffset(), r->file->GetCurrentBufSize());
+
+    size_t padding_size = r->file->GetNextWriteOffset()+r->file->GetCurrentBufTruncSize() - (r->get_offset()+footer_encoding.size());
+    printf("CurBufTruncSize=%ld ,Last Padding Size=%ld, padding start_offset=0x%lx, footerEncodingSize=%ld\n",
+    r->file->GetCurrentBufTruncSize(), padding_size, r->get_offset()+footer_encoding.size(), footer_encoding.size());
+
     r->set_offset(r->get_offset() + footer_encoding.size());
+
+    printf("After Padding r->offset=0x%lx\n", r->get_offset());
+    r->file->SetFileSize(r->get_offset());
+    printf("After Padding r->file->fileSize=0x%lx\n", r->file->GetFileSize());
   } else {
     r->SetIOStatus(ios);
     r->SetStatus(ios);
@@ -1961,6 +2051,19 @@ void BlockBasedTableBuilder::EnterUnbuffered() {
 
 Status BlockBasedTableBuilder::Finish() {
   Rep* r = rep_;
+  printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n");
+  printf("[WRITE] BBT Finish() FileName=%s  ", r->file->file_name().c_str());
+  printf("r->get_offset() offset=0x%lx\n", r->get_offset());
+  printf("[WRITE] r->last_key=");
+  for(int i=0; i<20; i++){
+    printf("%x", r->last_key.data()[i]);
+  }
+  printf("\n"); 
+  printf("[WRITE] r->first_key_in_next_block=");
+  for(int i=0; i<20; i++){
+    printf("%x", r->first_key_in_next_block->data()[i]);
+  }
+  printf("\n");
   assert(r->state != Rep::State::kClosed);
   bool empty_data_block = r->data_block.empty();
   r->first_key_in_next_block = nullptr;
@@ -1996,6 +2099,8 @@ Status BlockBasedTableBuilder::Finish() {
   MetaIndexBuilder meta_index_builder;
   WriteFilterBlock(&meta_index_builder);
   WriteIndexBlock(&meta_index_builder, &index_block_handle);
+  printf("[WRITE] IndexBlockHandle Offset=0x%lx size=%ld\n", index_block_handle.offset(), index_block_handle.size());
+  printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n");
   WriteCompressionDictBlock(&meta_index_builder);
   WriteRangeDelBlock(&meta_index_builder);
   WritePropertiesBlock(&meta_index_builder);

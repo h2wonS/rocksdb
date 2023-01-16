@@ -28,11 +28,13 @@ namespace ROCKSDB_NAMESPACE {
 
 inline void BlockFetcher::CheckBlockChecksum() {
   // Check the crc of the type and the block contents
+#if 0
   if (read_options_.verify_checksums) {
     io_status_ = status_to_io_status(ROCKSDB_NAMESPACE::VerifyBlockChecksum(
         footer_.checksum(), slice_.data(), block_size_, file_->file_name(),
         handle_.offset()));
   }
+#endif
 }
 
 inline bool BlockFetcher::TryGetUncompressBlockFromPersistentCache() {
@@ -223,6 +225,10 @@ IOStatus BlockFetcher::ReadBlockContents() {
 #endif  // NDEBUG
     return IOStatus::OK();
   }
+  if(for_compaction_){
+  printf("[READ] BlockFetcher::ReadBlockContents filename=%s handle_->offset=0x%lx block_size=%ld\n", 
+  file_->file_name().c_str(), handle_.offset(), block_size_,  block_size_with_trailer_);
+}
   if (TryGetFromPrefetchBuffer()) {
     if (!io_status_.ok()) {
       return io_status_;

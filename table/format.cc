@@ -324,6 +324,9 @@ Status ReadFooterFromFile(const IOOptions& opts, RandomAccessFileReader* file,
   // Check that we actually read the whole footer from the file. It may be
   // that size isn't correct.
   if (footer_input.size() < Footer::kMinEncodedLength) {
+    printf("Footer::kMaxEncodedLength bytes=%ld footer_input.size()=%d\n", 
+    Footer::kMaxEncodedLength,
+    footer_input.size());
     return Status::Corruption("file is too short (" + ToString(file_size) +
                               " bytes) to be an "
                               "sstable" +

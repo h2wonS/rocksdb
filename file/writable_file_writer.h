@@ -148,6 +148,67 @@ class WritableFileWriter {
   uint32_t buffered_data_crc32c_checksum_;
   bool buffered_data_with_checksum_;
 
+public:
+  char* smallest;
+  char* largest;
+  int num2;
+  int s_len;
+  int l_len;
+  size_t chunk_size;
+  bool isPadded;
+  size_t padded;
+  bool isIndexBlk;
+  bool isfirstCRC;
+
+  void assignSmallestKey(const Slice& key){
+    int len = static_cast<int>(key.size());
+    writable_file_->smallest = new char[len+1];
+    const char* _data = key.data();
+    printf("[WRITE] %s WFW::assignSmallestKey:", file_name_.c_str());
+    for(int i=0; i<len; i++){
+      writable_file_->smallest[i] = _data[i];
+      printf("%x", writable_file_->smallest[i]);
+    }
+    printf("\n");
+    writable_file_->s_len = len;
+  }
+  void assignLargestKey(const Slice& key){
+    int len = static_cast<int>(key.size());
+    writable_file_->largest = new char[len+1];
+    const char* _data = key.data();
+    printf("[WRITE] %s WFW::assignLargestKey:", file_name_.c_str());
+    for(int i=0; i<len; i++){
+      writable_file_->largest[i] = _data[i];
+      printf("%x", writable_file_->largest[i]);
+    }
+    printf("\n");
+    writable_file_->l_len = len;
+  }
+
+  uint64_t GetNextWriteOffset(){
+    return next_write_offset_;
+  }
+
+  size_t GetCurrentBufTruncSize(){
+    int n = buf_->CurrentSize() / buf_->Alignment();
+    size_t bufSize = n * buf_->Alignment();
+    if (buf_->CurrentSize() % buf_->Alignment() > 0)
+      bufSize += buf_->Alignment();
+    return bufSize;
+  }
+  
+  void SetFileSize(uint64_t fileSize){
+    filesize_  = fileSize;
+  }
+
+  size_t GetFileSize() {
+    return filesize_;
+  }
+
+  size_t GetCurrentBufSize(){
+    return buf_->CurrentSize();
+  }
+
  public:
   WritableFileWriter(
       std::unique_ptr<FSWritableFile>&& file, const std::string& _file_name,
@@ -177,13 +238,26 @@ class WritableFileWriter {
         checksum_finalized_(false),
         perform_data_verification_(perform_data_verification),
         buffered_data_crc32c_checksum_(0),
-        buffered_data_with_checksum_(buffered_data_with_checksum) {
+        buffered_data_with_checksum_(buffered_data_with_checksum),
+        smallest(nullptr),
+        largest(nullptr),
+        num2(0),
+        s_len(0),
+        l_len(0),
+        chunk_size((size_t)576766),
+        isPadded(false),
+        padded((size_t)0),
+        isIndexBlk(false),
+        isfirstCRC(false) {
     TEST_SYNC_POINT_CALLBACK("WritableFileWriter::WritableFileWriter:0",
                              reinterpret_cast<void*>(max_buffer_size_));
     buf_ = new AlignedBuffer;
     buf_->Alignment(writable_file_->GetRequiredBufferAlignment());
-    buf_->AllocateNewBuffer(std::min((size_t)65536, max_buffer_size_));
-
+    if (file_name_.substr(file_name_.size() - 3) == "sst") {
+      buf_->AllocateNewBuffer(max_buffer_size_);
+    }else {
+      buf_->AllocateNewBuffer(std::min((size_t)65536, max_buffer_size_));
+    }
 #ifndef ROCKSDB_LITE
     std::for_each(listeners.begin(), listeners.end(),
                   [this](const std::shared_ptr<EventListener>& e) {
