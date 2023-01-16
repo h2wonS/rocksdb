@@ -466,6 +466,13 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   return status;
 }
 
+thread_local uint64_t __PipelinedW = 0;
+thread_local uint64_t __PipelinedW_cnt = 0;
+thread_local uint64_t __MTWLstate_cnt = 0;
+thread_local uint64_t __PMTWstate_cnt = 0;
+thread_local uint64_t __Completedstate_cnt = 0;
+thread_local uint64_t __GLstate_cnt = 0;
+
 Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
                                   WriteBatch* my_batch, WriteCallback* callback,
                                   uint64_t* log_used, uint64_t log_ref,
@@ -474,6 +481,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
   StopWatch write_sw(immutable_db_options_.clock, immutable_db_options_.stats,
                      DB_WRITE);
 
+  auto start = std::chrono::system_clock::now();
   WriteContext write_context;
 
   WriteThread::Writer w(write_options, my_batch, callback, log_ref,
@@ -481,6 +489,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
   write_thread_.JoinBatchGroup(&w);
   TEST_SYNC_POINT("DBImplWrite::PipelinedWriteImpl:AfterJoinBatchGroup");
   if (w.state == WriteThread::STATE_GROUP_LEADER) {
+  __GLstate_cnt++;
     WriteThread::WriteGroup wal_write_group;
     if (w.callback && !w.callback->AllowWriteBatching()) {
       write_thread_.WaitForMemTableWriters();
@@ -567,7 +576,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
       mutex_.Unlock();
     }
 
-    write_thread_.ExitAsBatchGroupLeader(wal_write_group, w.status);
+   write_thread_.ExitAsBatchGroupLeader(wal_write_group, w.status);
   }
 
   // NOTE: the memtable_write_group is declared before the following
@@ -577,6 +586,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
   WriteThread::WriteGroup memtable_write_group;
 
   if (w.state == WriteThread::STATE_MEMTABLE_WRITER_LEADER) {
+    __MTWLstate_cnt++;
     PERF_TIMER_GUARD(write_memtable_time);
     assert(w.ShouldWriteToMemtable());
     write_thread_.EnterAsMemTableWriter(&w, &memtable_write_group);
@@ -599,6 +609,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
   }
 
   if (w.state == WriteThread::STATE_PARALLEL_MEMTABLE_WRITER) {
+    __PMTWstate_cnt++;
     assert(w.ShouldWriteToMemtable());
     ColumnFamilyMemTablesImpl column_family_memtables(
         versions_->GetColumnFamilySet());
@@ -618,7 +629,12 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
     *seq_used = w.sequence;
   }
 
+  auto sec = std::chrono::system_clock::now() - start;
+  __PipelinedW += sec.count();
+  __PipelinedW_cnt++;
+
   assert(w.state == WriteThread::STATE_COMPLETED);
+    __Completedstate_cnt++;
   return w.FinalStatus();
 }
 

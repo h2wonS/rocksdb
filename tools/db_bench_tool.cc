@@ -1513,14 +1513,34 @@ static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((__unused__
                           &ValidateTableCacheNumshardbits);
 
 namespace ROCKSDB_NAMESPACE {
+  thread_local uint64_t __batchPut_cnt = 0;
+  thread_local uint64_t __Write_cnt = 0;
+
   extern thread_local uint64_t __alpha;
   extern thread_local uint64_t __alpha_cnt;
   extern thread_local uint64_t __beta;
   extern thread_local uint64_t __beta_cnt;
+  extern thread_local uint64_t __beta_over;
+  extern thread_local uint64_t __beta_over2;
+  extern thread_local uint64_t __beta_over3;
+  extern thread_local uint64_t __beta_over4;
+  extern thread_local uint64_t __beta_under;
+  extern thread_local uint64_t __beta_max;
   extern thread_local uint64_t __delta;
   extern thread_local uint64_t __delta_cnt;
-  extern thread_local uint64_t __zeta;
-  extern thread_local uint64_t __zeta_cnt;
+  extern thread_local uint64_t __delta2;
+  extern thread_local uint64_t __delta_cnt2;
+  extern thread_local uint64_t __CompletePMTW;
+  extern thread_local uint64_t __CompletePMTW_cnt;
+  extern thread_local uint64_t __ExitAsBGL;
+  extern thread_local uint64_t __ExitAsBGL_cnt;
+  extern thread_local uint64_t __PipelinedW;
+  extern thread_local uint64_t __PipelinedW_cnt;
+  extern thread_local uint64_t __JBG_cnt;
+  extern thread_local uint64_t __PMTWstate_cnt;
+  extern thread_local uint64_t __MTWLstate_cnt;
+  extern thread_local uint64_t __GLstate_cnt;
+  extern thread_local uint64_t __Completedstate_cnt;
 
 namespace {
 static Status CreateMemTableRepFactory(
@@ -4654,18 +4674,54 @@ class Benchmark {
   void WriteRandom(ThreadState* thread) {
     DoWrite(thread, RANDOM);
     std::cout << "######################################" << std::endl;
+
+
+    std::cout << std::this_thread::get_id() << ": batchPut Total CNT\t" <<  __batchPut_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": Write Total CNT\t" <<  __Write_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": PipelinedW(sec) Tot\t" << __PipelinedW * 1e-9 << std::endl;
+    if (__PipelinedW_cnt != 0)
+      std::cout << std::this_thread::get_id() << ": PipelinedW(sec) Avg\t" << (__PipelinedW / __PipelinedW_cnt) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": PipelinedW Total CNT\t" << __PipelinedW_cnt << std::endl;
+
+    std::cout << std::this_thread::get_id() << ": JoinBatchGroup Total CNT\t" << __JBG_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": MTWL State Total CNT\t" << __MTWLstate_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": PMTW State Total CNT\t" << __PMTWstate_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": GL State Total CNT\t" << __GLstate_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": Completed State Total CNT\t" << __Completedstate_cnt << std::endl;
     std::cout << std::this_thread::get_id() << ": WriteWAL(sec) Tot\t" << __alpha * 1e-9 << std::endl;
     if (__alpha_cnt != 0)
       std::cout << std::this_thread::get_id() << ": WriteWAL(sec) Avg\t" << (__alpha / __alpha_cnt) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WriteWAL Total CNT\t" << __alpha_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": SwitchTheLeader(sec) Tot\t" << __ExitAsBGL * 1e-9 << std::endl;
+    if (__ExitAsBGL_cnt != 0)
+      std::cout << std::this_thread::get_id() << ": SwitchTheLeader(sec) Avg\t" << (__ExitAsBGL / __ExitAsBGL_cnt) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": SwitchTheLeader Total CNT\t" << __ExitAsBGL_cnt << std::endl;
+ 
     std::cout << std::this_thread::get_id() << ": WaitForLeadership(sec) Tot\t" << __beta * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership(sec) Max\t" << __beta_max * 1e-9<< std::endl;
     if (__beta_cnt != 0)
       std::cout << std::this_thread::get_id() << ": WaitForLeadership(sec) Avg\t" << (__beta / __beta_cnt ) * 1e-9 << std::endl;
-    std::cout << std::this_thread::get_id() << ": WaitForMemtableWrite(sec) Tot\t" << __delta * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership Total CNT\t" <<  __beta_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership # [0, 0.0001] = \t" << __beta_under << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership # [0.0001, 0.001] = \t" << __beta_over << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership # [0.001, 0.01] = \t" << __beta_over2 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership # [0.01, 0.1] = \t" << __beta_over3 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForLeadership # [0.1, inf] = \t" << __beta_over4 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForCompleted(sec) Tot\t" << __delta * 1e-9 << std::endl;
     if (__delta_cnt != 0)
-      std::cout << std::this_thread::get_id() << ": WaitForMemtableWrite(sec) Avg\t" << (__delta / __delta_cnt) * 1e-9 << std::endl;
-    std::cout << std::this_thread::get_id() << ": ZoneAppend Latency Tot\t" << __zeta * 1e-9 << std::endl;
-    if (__zeta_cnt != 0)
-      std::cout << std::this_thread::get_id() << ": ZoneAppend Latency Avg\t" << (__zeta / __zeta_cnt) * 1e-9 << std::endl;
+      std::cout << std::this_thread::get_id() << ": WaitForCompleted(sec) Avg\t" << (__delta / __delta_cnt) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForCompleted Total CNT\t" <<  __delta_cnt << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForMemtable(sec) Tot\t" << __delta2 * 1e-9 << std::endl;
+    if (__delta_cnt2 != 0)
+      std::cout << std::this_thread::get_id() << ": WaitForMemtableWriteStart(sec) Avg\t" << (__delta2 / __delta_cnt2) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForMemtableWriteStart Total CNT\t" <<  __delta_cnt2 << std::endl;
+
+    std::cout << std::this_thread::get_id() << ": WaitForMemtableSync(sec) Tot\t" << __CompletePMTW * 1e-9 << std::endl;
+    if (__CompletePMTW_cnt != 0)
+      std::cout << std::this_thread::get_id() << ": WaitForMemtableSync(sec) Avg\t" << (__CompletePMTW / __CompletePMTW_cnt) * 1e-9 << std::endl;
+    std::cout << std::this_thread::get_id() << ": WaitForMemtableSync Total CNT\t" <<  __CompletePMTW_cnt << std::endl;
+ 
+
 
 
   }
@@ -4741,7 +4797,6 @@ class Benchmark {
   double SineRate(double x) {
     return FLAGS_sine_a*sin((FLAGS_sine_b*x) + FLAGS_sine_c) + FLAGS_sine_d;
   }
-
   void DoWrite(ThreadState* thread, WriteMode write_mode) {
     const int test_duration = write_mode == RANDOM ? FLAGS_duration : 0;
     const int64_t num_ops = writes_ == 0 ? num_ : writes_;
@@ -5016,6 +5071,7 @@ class Benchmark {
           }
 #endif  //  ROCKSDB_LITE
         } else if (FLAGS_num_column_families <= 1) {
+          __batchPut_cnt++;
           batch.Put(key, val);
         } else {
           // We use same rand_num as seed for key and column family so that we
@@ -5111,6 +5167,7 @@ class Benchmark {
       }
       if (!use_blob_db_) {
         // Not stacked BlobDB
+        __Write_cnt++;
         s = db_with_cfh->db->Write(write_options_, &batch);
       }
       thread->stats.FinishedOps(db_with_cfh, db_with_cfh->db,

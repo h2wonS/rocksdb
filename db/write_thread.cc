@@ -14,8 +14,6 @@
 
 namespace ROCKSDB_NAMESPACE {
 
-extern std::shared_ptr<Logger> _logger;
-
 WriteThread::WriteThread(const ImmutableDBOptions& db_options)
     : max_yield_usec_(db_options.enable_write_thread_adaptive_yield
                           ? db_options.write_thread_max_yield_usec
@@ -382,17 +380,30 @@ void WriteThread::EndWriteStall() {
 static WriteThread::AdaptationContext jbg_ctx("JoinBatchGroup");
 thread_local uint64_t __beta = 0;
 thread_local uint64_t __beta_cnt = 0;  
+thread_local uint64_t __beta_max = 0;  
+thread_local uint64_t __beta_under = 0;  
+thread_local uint64_t __beta_over = 0;  
+thread_local uint64_t __beta_over2 = 0;  
+thread_local uint64_t __beta_over3 = 0;  
+thread_local uint64_t __beta_over4 = 0;  
 thread_local uint64_t __delta = 0;
 thread_local uint64_t __delta_cnt = 0;
+thread_local uint64_t __delta2 = 0;
+thread_local uint64_t __delta_cnt2 = 0;
+thread_local uint64_t __JBG_cnt = 0;
+
 
 void WriteThread::JoinBatchGroup(Writer* w) {
   TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:Start", w);
   assert(w->batch != nullptr);
+  __JBG_cnt++;
 
   bool linked_as_leader = LinkOne(w, &newest_writer_);
 
   if (linked_as_leader) {
     SetState(w, STATE_GROUP_LEADER);
+    __beta_cnt++;
+    __beta_under++;
   }
 
   TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:Wait", w);
@@ -413,21 +424,36 @@ void WriteThread::JoinBatchGroup(Writer* w) {
      */
     TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:BeganWaiting", w);
     auto start = std::chrono::system_clock::now();
-    ROCKS_LOG_INFO(_logger, "Thread(%ld) %llu AwaitState Start", std::this_thread::get_id(), start);
 
     AwaitState(w, STATE_GROUP_LEADER | STATE_MEMTABLE_WRITER_LEADER |
                       STATE_PARALLEL_MEMTABLE_WRITER | STATE_COMPLETED,
                &jbg_ctx);
     if (w->state == WriteThread::STATE_GROUP_LEADER) { 
       auto sec = std::chrono::system_clock::now() - start;
-      ROCKS_LOG_INFO(_logger, "Thread(%ld) %llu AwaitState End, GROUP_LEADER | Latency(sec) %f", std::this_thread::get_id(), start, sec.count()*1e-9);
+      if (sec.count() > __beta_max)
+        __beta_max = sec.count();
+      if (sec.count()*1e-9 < 0.0001)
+        __beta_under++;
+      else if (sec.count()*1e-9 > 0.0001 && sec.count()*1e-9 < 0.001)
+        __beta_over++;
+      else if (sec.count()*1e-9 > 0.001 && sec.count()*1e-9 < 0.01)
+        __beta_over2++;
+      else if (sec.count()*1e-9 > 0.01 && sec.count()*1e-9 < 0.1)
+        __beta_over3++;
+      else if (sec.count()*1e-9 > 0.1)
+        __beta_over4++;
       __beta += sec.count();
       __beta_cnt++;
     }
     else if (w->state == WriteThread::STATE_MEMTABLE_WRITER_LEADER ||
              w->state == WriteThread::STATE_PARALLEL_MEMTABLE_WRITER) { 
       auto sec = std::chrono::system_clock::now() - start;
-      ROCKS_LOG_INFO(_logger, "Thread(%ld) %llu AwaitState End, MEMTABLE_WRITER | Latency(sec) %f", std::this_thread::get_id(), start, sec.count()*1e-9);
+      __delta2 += sec.count();
+      __delta_cnt2++;
+    }
+
+    else if (w->state == WriteThread::STATE_COMPLETED){ 
+      auto sec = std::chrono::system_clock::now() - start;
       __delta += sec.count();
       __delta_cnt++;
     }
@@ -623,6 +649,8 @@ void WriteThread::LaunchParallelMemTableWriters(WriteGroup* write_group) {
 
 static WriteThread::AdaptationContext cpmtw_ctx("CompleteParallelMemTableWriter");
 // This method is called by both the leader and parallel followers
+thread_local uint64_t __CompletePMTW_cnt = 0;
+thread_local uint64_t __CompletePMTW = 0;
 bool WriteThread::CompleteParallelMemTableWriter(Writer* w) {
 
   auto* write_group = w->write_group;
@@ -633,7 +661,11 @@ bool WriteThread::CompleteParallelMemTableWriter(Writer* w) {
 
   if (write_group->running-- > 1) {
     // we're not the last one
+    auto start = std::chrono::system_clock::now();
     AwaitState(w, STATE_COMPLETED, &cpmtw_ctx);
+    auto sec = std::chrono::system_clock::now() - start;
+    __CompletePMTW += sec.count();
+    __CompletePMTW_cnt++; 
     return false;
   }
   // else we're the last parallel worker and should perform exit duties.
@@ -655,11 +687,16 @@ void WriteThread::ExitAsBatchGroupFollower(Writer* w) {
 }
 
 static WriteThread::AdaptationContext eabgl_ctx("ExitAsBatchGroupLeader");
+thread_local uint64_t __ExitAsBGL = 0;
+thread_local uint64_t __ExitAsBGL_cnt = 0;
+
 void WriteThread::ExitAsBatchGroupLeader(WriteGroup& write_group,
                                          Status& status) {
   Writer* leader = write_group.leader;
   Writer* last_writer = write_group.last_writer;
   assert(leader->link_older == nullptr);
+
+  auto start = std::chrono::system_clock::now();
 
   // If status is non-ok already, then write_group.status won't have the chance
   // of being propagated to caller.
@@ -730,6 +767,9 @@ void WriteThread::ExitAsBatchGroupLeader(WriteGroup& write_group,
     if (next_leader != nullptr) {
       next_leader->link_older = nullptr;
       SetState(next_leader, STATE_GROUP_LEADER);
+      auto sec = std::chrono::system_clock::now() - start;
+      __ExitAsBGL_cnt++;
+      __ExitAsBGL += sec.count();
     }
     AwaitState(leader, STATE_MEMTABLE_WRITER_LEADER |
                            STATE_PARALLEL_MEMTABLE_WRITER | STATE_COMPLETED,
